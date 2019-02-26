@@ -11,7 +11,9 @@ import (
 	"io"
 	"os"
 
-	"github.com/spf13/viper"
+	"github.com/frieser/viper"
+
+	minioStore "github.com/frieser/minio-crypt-store"
 	crypt "github.com/xordataexchange/crypt/config"
 )
 
@@ -79,19 +81,38 @@ func getConfigManager(rp viper.RemoteProvider) (crypt.ConfigManager, error) {
 	if rp.SecretKeyring() != "" {
 		kr, err := os.Open(rp.SecretKeyring())
 		defer kr.Close()
+
 		if err != nil {
 			return nil, err
 		}
-		if rp.Provider() == "etcd" {
+		switch rp.Provider() {
+		case "etcd":
 			cm, err = crypt.NewEtcdConfigManager([]string{rp.Endpoint()}, kr)
-		} else {
+		case "consul":
 			cm, err = crypt.NewConsulConfigManager([]string{rp.Endpoint()}, kr)
+		case "minio":
+			store, err := minioStore.New([]string{rp.Endpoint()})
+			if err != nil {
+				return nil, err
+			}
+			cm, err = crypt.NewConfigManager(store, kr)
+		default:
+			return nil, viper.UnsupportedRemoteProviderError(rp.Provider())
 		}
 	} else {
-		if rp.Provider() == "etcd" {
+		switch rp.Provider() {
+		case "etcd":
 			cm, err = crypt.NewStandardEtcdConfigManager([]string{rp.Endpoint()})
-		} else {
+		case "consul":
 			cm, err = crypt.NewStandardConsulConfigManager([]string{rp.Endpoint()})
+		case "minio":
+			store, err := minioStore.New([]string{rp.Endpoint()})
+			if err != nil {
+				return nil, err
+			}
+			cm, err = crypt.NewStandardConfigManager(store)
+		default:
+			return nil, viper.UnsupportedRemoteProviderError(rp.Provider())
 		}
 	}
 	if err != nil {
